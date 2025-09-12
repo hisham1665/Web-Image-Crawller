@@ -1,3 +1,4 @@
+import re
 import os
 import hashlib
 from icrawler.builtin import BingImageCrawler, GoogleImageCrawler
@@ -25,6 +26,15 @@ def scrape_images(query, num_images, engine="bing"):
     crawler.crawl(keyword=query, max_num=num_images * 2)  # overshoot for duplicates
 
     return save_dir  # return raw folder path
+
+
+def safe_folder_name(name: str) -> str:
+    """Make a safe folder name for Windows/Linux/Mac."""
+    # remove illegal characters
+    name = re.sub(r'[<>:"/\\|?*]', '', name)
+    # strip spaces and replace inner spaces with underscore
+    name = name.strip().replace(" ", "_")
+    return name
 
 
 def merge_and_deduplicate(query, quantity, engine_folders):
@@ -62,7 +72,7 @@ def merge_and_deduplicate(query, quantity, engine_folders):
 if __name__ == "__main__":
     topic = input("Enter topic: ")
     quantity = int(input("Enter number of images: "))
-
+    topic = safe_folder_name(topic)
     results = []
     engine_folders = []
 
