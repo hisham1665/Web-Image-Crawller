@@ -7,7 +7,9 @@ import zipfile
 import io
 import tempfile
 import time
-from threading import Thread
+import shutil
+import threading
+from threading import Thread, Lock
 from urllib.parse import urlparse, urljoin
 from flask import Flask, render_template, request, jsonify, url_for, send_file
 from icrawler.builtin import BingImageCrawler, GoogleImageCrawler
@@ -106,24 +108,66 @@ def scrape_duckduckgo_images(query, max_images):
         return []
 
 def download_image_from_url(url, save_path):
-    """Download an image from URL"""
+    """Download an image from URL with better error handling"""
     try:
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Accept': 'image/*,*/*;q=0.8',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Connection': 'keep-alive'
         }
         
-        response = requests.get(url, headers=headers, timeout=15, stream=True)
-        if response.status_code == 200:
-            with open(save_path, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=1024):
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        
+        response = requests.get(url, headers=headers, timeout=15, stream=True, verify=False)
+        response.raise_for_status()  # Raise exception for bad status codes
+        
+        # Check content type
+        content_type = response.headers.get('content-type', '').lower()
+        if not any(img_type in content_type for img_type in ['image/', 'jpeg', 'png', 'gif', 'webp']):
+            print(f"Invalid content type: {content_type} for {url}")
+            return False
+        
+        # Download with size limit (10MB max)
+        total_size = 0
+        max_size = 10 * 1024 * 1024  # 10MB limit
+        
+        with open(save_path, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:
+                    total_size += len(chunk)
+                    if total_size > max_size:
+                        print(f"File too large: {url}")
+                        os.remove(save_path)
+                        return False
                     f.write(chunk)
+        
+        # Final validation
+        if os.path.exists(save_path) and os.path.getsize(save_path) > 1000:
             return True
+        else:
+            if os.path.exists(save_path):
+                os.remove(save_path)
+            return False
+            
     except Exception as e:
         print(f"Error downloading {url}: {e}")
-    return False
+        if os.path.exists(save_path):
+            try:
+                os.remove(save_path)
+            except:
+                pass
+        return False
 
 def scrape_images_multi_engine(query, total_images_needed):
     """Advanced multi-engine scraping with deduplication"""
+    
+    # Thread-safe collections
+    all_images = []
+    seen_hashes = set()
+    seen_urls = set()
+    images_lock = Lock()  # Critical: Thread safety
     
     # Search engines configuration
     engines = {
@@ -133,10 +177,6 @@ def scrape_images_multi_engine(query, total_images_needed):
     
     # Custom URL-based engines
     custom_engines = ['yandex', 'duckduckgo']
-    
-    all_images = []
-    seen_hashes = set()
-    seen_urls = set()
     
     # Calculate images per engine (with extra to account for duplicates)
     total_engines = len(engines) + len(custom_engines)
@@ -179,40 +219,41 @@ def scrape_images_multi_engine(query, total_images_needed):
                             
                         # Calculate image hash for deduplication
                         img_hash = calculate_image_hash(src_path)
-                        if img_hash and img_hash in seen_hashes:
-                            continue  # Skip duplicate
                         
-                        # Create unique filename
-                        file_ext = os.path.splitext(filename)[1] or '.jpg'
-                        unique_name = f"{safe_folder_name(query)}_{engine_name}_{int(time.time())}_{i}{file_ext}"
-                        dest_path = os.path.join(static_temp, unique_name)
-                        
-                        # Copy file
-                        import shutil
-                        shutil.copy2(src_path, dest_path)
-                        
-                        # Add to results
-                        if img_hash:
-                            seen_hashes.add(img_hash)
-                        
-                        all_images.append({
-                            'url': f"/static/temp_images/{unique_name}",
-                            'filename': f"{safe_folder_name(query)}_{engine_name}_{len(all_images)+1}{file_ext}",
-                            'engine': engine_name,
-                            'local_path': dest_path,
-                            'hash': img_hash
-                        })
-                        
-                        # Stop if we have enough unique images
-                        if len(all_images) >= total_images_needed:
-                            break
+                        # Thread-safe check and add
+                        with images_lock:
+                            if img_hash and img_hash in seen_hashes:
+                                continue  # Skip duplicate
+                            
+                            # Create unique filename
+                            file_ext = os.path.splitext(filename)[1] or '.jpg'
+                            unique_name = f"{safe_folder_name(query)}_{engine_name}_{int(time.time())}_{i}_{threading.current_thread().ident}{file_ext}"
+                            dest_path = os.path.join(static_temp, unique_name)
+                            
+                            # Copy file
+                            shutil.copy2(src_path, dest_path)
+                            
+                            # Add to results
+                            if img_hash:
+                                seen_hashes.add(img_hash)
+                            
+                            all_images.append({
+                                'url': f"/static/temp_images/{unique_name}",
+                                'filename': f"{safe_folder_name(query)}_{engine_name}_{len(all_images)+1}{file_ext}",
+                                'engine': engine_name,
+                                'local_path': dest_path,
+                                'hash': img_hash
+                            })
+                            
+                            # Stop if we have enough unique images
+                            if len(all_images) >= total_images_needed:
+                                break
                             
                     except Exception as e:
                         print(f"Error processing {filename}: {e}")
                         continue
             
             # Clean up temp directory
-            import shutil
             shutil.rmtree(temp_dir, ignore_errors=True)
             
             print(f"{engine_name} contributed {sum(1 for img in all_images if img['engine'] == engine_name)} unique images")
@@ -238,21 +279,24 @@ def scrape_images_multi_engine(query, total_images_needed):
             
             # Download images from URLs
             for i, img_url in enumerate(image_urls):
-                if len(all_images) >= total_images_needed:
-                    break
-                    
-                if img_url in seen_urls:
-                    continue  # Skip duplicate URLs
+                with images_lock:
+                    if len(all_images) >= total_images_needed:
+                        break
+                        
+                    if img_url in seen_urls:
+                        continue  # Skip duplicate URLs
                 
                 try:
-                    # Create unique filename
+                    # Create unique filename with better extension detection
                     file_ext = '.jpg'  # Default extension
                     if '.' in img_url:
-                        url_ext = img_url.split('.')[-1].lower()
-                        if url_ext in ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp']:
-                            file_ext = f'.{url_ext}'
+                        url_parts = img_url.split('.')
+                        if len(url_parts) > 1:
+                            potential_ext = url_parts[-1].lower().split('?')[0]  # Remove query params
+                            if potential_ext in ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp']:
+                                file_ext = f'.{potential_ext}'
                     
-                    unique_name = f"{safe_folder_name(query)}_{engine_name}_{int(time.time())}_{i}{file_ext}"
+                    unique_name = f"{safe_folder_name(query)}_{engine_name}_{int(time.time())}_{i}_{threading.current_thread().ident}{file_ext}"
                     dest_path = os.path.join(static_temp, unique_name)
                     
                     # Download image
@@ -261,22 +305,25 @@ def scrape_images_multi_engine(query, total_images_needed):
                         if os.path.exists(dest_path) and os.path.getsize(dest_path) > 5000:
                             # Calculate hash for deduplication
                             img_hash = calculate_image_hash(dest_path)
-                            if img_hash and img_hash in seen_hashes:
-                                os.remove(dest_path)  # Remove duplicate
-                                continue
                             
-                            # Add to results
-                            seen_urls.add(img_url)
-                            if img_hash:
-                                seen_hashes.add(img_hash)
-                            
-                            all_images.append({
-                                'url': f"/static/temp_images/{unique_name}",
-                                'filename': f"{safe_folder_name(query)}_{engine_name}_{len(all_images)+1}{file_ext}",
-                                'engine': engine_name,
-                                'local_path': dest_path,
-                                'hash': img_hash
-                            })
+                            # Thread-safe check and add
+                            with images_lock:
+                                if img_hash and img_hash in seen_hashes:
+                                    os.remove(dest_path)  # Remove duplicate
+                                    continue
+                                
+                                # Add to results
+                                seen_urls.add(img_url)
+                                if img_hash:
+                                    seen_hashes.add(img_hash)
+                                
+                                all_images.append({
+                                    'url': f"/static/temp_images/{unique_name}",
+                                    'filename': f"{safe_folder_name(query)}_{engine_name}_{len(all_images)+1}{file_ext}",
+                                    'engine': engine_name,
+                                    'local_path': dest_path,
+                                    'hash': img_hash
+                                })
                         else:
                             if os.path.exists(dest_path):
                                 os.remove(dest_path)  # Remove small/invalid files
@@ -337,38 +384,42 @@ def scrape_images_multi_engine(query, total_images_needed):
                         if len(all_images) >= total_images_needed:
                             break
                             
-                        try:
-                            src_path = os.path.join(temp_dir, filename)
-                            if os.path.getsize(src_path) < 5000:
-                                continue
+                            try:
+                                src_path = os.path.join(temp_dir, filename)
+                                if os.path.getsize(src_path) < 5000:
+                                    continue
+                                    
+                                img_hash = calculate_image_hash(src_path)
                                 
-                            img_hash = calculate_image_hash(src_path)
-                            if img_hash and img_hash in seen_hashes:
+                                # Thread-safe check and add
+                                with images_lock:
+                                    if len(all_images) >= total_images_needed:
+                                        break
+                                    
+                                    if img_hash and img_hash in seen_hashes:
+                                        continue
+                                
+                                    file_ext = os.path.splitext(filename)[1] or '.jpg'
+                                    unique_name = f"{safe_folder_name(query)}_{engine_name}_extra_{int(time.time())}_{i}_{threading.current_thread().ident}{file_ext}"
+                                    dest_path = os.path.join('static', 'temp_images', unique_name)
+                                    
+                                    shutil.copy2(src_path, dest_path)
+                                    
+                                    if img_hash:
+                                        seen_hashes.add(img_hash)
+                                    
+                                    all_images.append({
+                                        'url': f"/static/temp_images/{unique_name}",
+                                        'filename': f"{safe_folder_name(query)}_{engine_name}_extra_{len(all_images)+1}{file_ext}",
+                                        'engine': f"{engine_name}_extra",
+                                        'local_path': dest_path,
+                                        'hash': img_hash
+                                    })
+                            
+                            except Exception as e:
                                 continue
-                            
-                            file_ext = os.path.splitext(filename)[1] or '.jpg'
-                            unique_name = f"{safe_folder_name(query)}_{engine_name}_extra_{int(time.time())}_{i}{file_ext}"
-                            dest_path = os.path.join('static', 'temp_images', unique_name)
-                            
-                            import shutil
-                            shutil.copy2(src_path, dest_path)
-                            
-                            if img_hash:
-                                seen_hashes.add(img_hash)
-                            
-                            all_images.append({
-                                'url': f"/static/temp_images/{unique_name}",
-                                'filename': f"{safe_folder_name(query)}_{engine_name}_extra_{len(all_images)+1}{file_ext}",
-                                'engine': f"{engine_name}_extra",
-                                'local_path': dest_path,
-                                'hash': img_hash
-                            })
-                            
-                        except Exception as e:
-                            continue
-                
-                import shutil
-                shutil.rmtree(temp_dir, ignore_errors=True)
+                    
+                    shutil.rmtree(temp_dir, ignore_errors=True)
                 
             except Exception as e:
                 print(f"Error with extra search on {engine_name}: {e}")
@@ -385,58 +436,93 @@ def index():
 
 @app.route('/scrape', methods=['POST'])
 def scrape():
-    # Handle both JSON and form data
-    if request.is_json:
-        data = request.get_json()
-        topic = data.get('topic', '').strip()
-        quantity = int(data.get('quantity', 20))
-    else:
-        # Handle form data
-        topic = request.form.get('topic', '').strip()
-        quantity = int(request.form.get('quantity', 20))
-    
-    if not topic:
-        if request.is_json:
-            return jsonify({'success': False, 'error': 'Please enter a search topic'})
-        else:
-            return render_template('error.html', error='Please enter a search topic')
-    
     try:
-        print(f"Scraping {quantity} images for '{topic}'...")
+        # Input validation and sanitization
+        if request.is_json:
+            data = request.get_json()
+            if not data:
+                return jsonify({'success': False, 'error': 'Invalid JSON data'})
+            topic = data.get('topic', '').strip()
+            quantity = data.get('quantity', 20)
+        else:
+            # Handle form data
+            topic = request.form.get('topic', '').strip()
+            quantity = request.form.get('quantity', 20)
         
-        # Use the multi-engine scraper
-        scraped_urls = scrape_images_multi_engine(topic, quantity)
-        
-        if not scraped_urls:
-            error_msg = 'No images could be scraped. Please try a different search term.'
+        # Input validation
+        if not topic:
+            error_msg = 'Please enter a search topic'
             if request.is_json:
                 return jsonify({'success': False, 'error': error_msg})
             else:
                 return render_template('error.html', error=error_msg)
         
-        if request.is_json:
-            return jsonify({
-                'success': True,
-                'images': scraped_urls,
-                'topic': topic,
-                'total': len(scraped_urls),
-                'total_found': len(scraped_urls),
-                'requested': quantity
-            })
-        else:
-            # Render results page for form submission
-            return render_template('results.html', 
-                                 images=scraped_urls, 
-                                 image_urls=scraped_urls,
-                                 topic=topic, 
-                                 safe_topic=safe_folder_name(topic),
-                                 total=len(scraped_urls),
-                                 total_found=len(scraped_urls),
-                                 requested=quantity)
+        # Validate quantity
+        try:
+            quantity = int(quantity)
+            if quantity <= 0 or quantity > 1000:
+                raise ValueError("Quantity must be between 1 and 1000")
+        except (ValueError, TypeError) as e:
+            error_msg = 'Please enter a valid number between 1 and 1000'
+            if request.is_json:
+                return jsonify({'success': False, 'error': error_msg})
+            else:
+                return render_template('error.html', error=error_msg)
         
+        # Sanitize topic to prevent issues
+        topic = re.sub(r'[<>:"/\\|?*]', '', topic)
+        if len(topic) < 2:
+            error_msg = 'Search topic must be at least 2 characters long'
+            if request.is_json:
+                return jsonify({'success': False, 'error': error_msg})
+            else:
+                return render_template('error.html', error=error_msg)
+        
+        try:
+            print(f"Scraping {quantity} images for '{topic}'...")
+            
+            # Use the multi-engine scraper
+            scraped_urls = scrape_images_multi_engine(topic, quantity)
+        
+            if not scraped_urls:
+                error_msg = 'No images could be scraped. Please try a different search term.'
+                if request.is_json:
+                    return jsonify({'success': False, 'error': error_msg})
+                else:
+                    return render_template('error.html', error=error_msg)
+            
+            if request.is_json:
+                return jsonify({
+                    'success': True,
+                    'images': scraped_urls,
+                    'topic': topic,
+                    'total': len(scraped_urls),
+                    'total_found': len(scraped_urls),
+                    'requested': quantity
+                })
+            else:
+                # Render results page for form submission
+                return render_template('results.html', 
+                                     images=scraped_urls, 
+                                     image_urls=scraped_urls,
+                                     topic=topic, 
+                                     safe_topic=safe_folder_name(topic),
+                                     total=len(scraped_urls),
+                                     total_found=len(scraped_urls),
+                                     requested=quantity)
+            
+        except Exception as e:
+            print(f"Scraping error: {e}")
+            error_msg = f'Error occurred: {str(e)}'
+            if request.is_json:
+                return jsonify({'success': False, 'error': error_msg})
+            else:
+                return render_template('error.html', error=error_msg)
+    
     except Exception as e:
-        print(f"Scraping error: {e}")
-        error_msg = f'Error occurred: {str(e)}'
+        # Handle unexpected errors
+        print(f"Unexpected error in scrape route: {e}")
+        error_msg = f'Unexpected error: {str(e)}'
         if request.is_json:
             return jsonify({'success': False, 'error': error_msg})
         else:
