@@ -1,0 +1,182 @@
+[
+  {
+    "url": "/static/temp_images/Dogs_bing_1757872812_0.jpg",
+    "filename": "Dogs_bing_1.jpg",
+    "engine": "bing",
+    "local_path": "static\\temp_images\\Dogs_bing_1757872812_0.jpg"
+  },
+  {
+    "url": "/static/temp_images/Dogs_bing_1757872812_1.jpg",
+    "filename": "Dogs_bing_2.jpg",
+    "engine": "bing",
+    "local_path": "static\\temp_images\\Dogs_bing_1757872812_1.jpg"
+  },
+  {
+    "url": "/static/temp_images/Dogs_bing_1757872812_2.jpg",
+    "filename": "Dogs_bing_3.jpg",
+    "engine": "bing",
+    "local_path": "static\\temp_images\\Dogs_bing_1757872812_2.jpg"
+  },
+  {
+    "url": "/static/temp_images/Dogs_bing_1757872812_3.jpg",
+    "filename": "Dogs_bing_4.jpg",
+    "engine": "bing",
+    "local_path": "static\\temp_images\\Dogs_bing_1757872812_3.jpg"
+  },
+  {
+    "url": "/static/temp_images/Dogs_bing_1757872812_4.jpg",
+    "filename": "Dogs_bing_5.jpg",
+    "engine": "bing",
+    "local_path": "static\\temp_images\\Dogs_bing_1757872812_4.jpg"
+  },
+  {
+    "url": "/static/temp_images/Dogs_bing_1757872812_5.jpg",
+    "filename": "Dogs_bing_6.jpg",
+    "engine": "bing",
+    "local_path": "static\\temp_images\\Dogs_bing_1757872812_5.jpg"
+  },
+  {
+    "url": "/static/temp_images/Dogs_bing_1757872812_6.jpg",
+    "filename": "Dogs_bing_7.jpg",
+    "engine": "bing",
+    "local_path": "static\\temp_images\\Dogs_bing_1757872812_6.jpg"
+  },
+  {
+    "url": "/static/temp_images/Dogs_bing_1757872812_7.jpg",
+    "filename": "Dogs_bing_8.jpg",
+    "engine": "bing",
+    "local_path": "static\\temp_images\\Dogs_bing_1757872812_7.jpg"
+  },
+  {
+    "url": "/static/temp_images/Dogs_bing_1757872812_8.jpg",
+    "filename": "Dogs_bing_9.jpg",
+    "engine": "bing",
+    "local_path": "static\\temp_images\\Dogs_bing_1757872812_8.jpg"
+  },
+  {
+    "url": "/static/temp_images/Dogs_bing_1757872812_9.jpg",
+    "filename": "Dogs_bing_10.jpg",
+    "engine": "bing",
+    "local_path": "static\\temp_images\\Dogs_bing_1757872812_9.jpg"
+  },
+  {
+    "url": "/static/temp_images/Dogs_bing_1757872812_10.jpg",
+    "filename": "Dogs_bing_11.jpg",
+    "engine": "bing",
+    "local_path": "static\\temp_images\\Dogs_bing_1757872812_10.jpg"
+  },
+  {
+    "url": "/static/temp_images/Dogs_bing_1757872812_11.jpg",
+    "filename": "Dogs_bing_12.jpg",
+    "engine": "bing",
+    "local_path": "static\\temp_images\\Dogs_bing_1757872812_11.jpg"
+  },
+  {
+    "url": "/static/temp_images/Dogs_bing_1757872812_12.jpg",
+    "filename": "Dogs_bing_13.jpg",
+    "engine": "bing",
+    "local_path": "static\\temp_images\\Dogs_bing_1757872812_12.jpg"
+  },
+  {
+    "url": "/static/temp_images/Dogs_bing_1757872812_13.jpg",
+    "filename": "Dogs_bing_14.jpg",
+    "engine": "bing",
+    "local_path": "static\\temp_images\\Dogs_bing_1757872812_13.jpg"
+  },
+  {
+    "url": "/static/temp_images/Dogs_bing_1757872812_14.jpg",
+    "filename": "Dogs_bing_15.jpg",
+    "engine": "bing",
+    "local_path": "static\\temp_images\\Dogs_bing_1757872812_14.jpg"
+  },
+  {
+    "url": "/static/temp_images/Dogs_google_1757872816_0.jpg",
+    "filename": "Dogs_google_1.jpg",
+    "engine": "google",
+    "local_path": "static\\temp_images\\Dogs_google_1757872816_0.jpg"
+  },
+  {
+    "url": "/static/temp_images/Dogs_google_1757872816_1.jpg",
+    "filename": "Dogs_google_2.jpg",
+    "engine": "google",
+    "local_path": "static\\temp_images\\Dogs_google_1757872816_1.jpg"
+  },
+  {
+    "url": "/static/temp_images/Dogs_google_1757872816_2.jpg",
+    "filename": "Dogs_google_3.jpg",
+    "engine": "google",
+    "local_path": "static\\temp_images\\Dogs_google_1757872816_2.jpg"
+  },
+  {
+    "url": "/static/temp_images/Dogs_google_1757872816_3.jpg",
+    "filename": "Dogs_google_4.jpg",
+    "engine": "google",
+    "local_path": "static\\temp_images\\Dogs_google_1757872816_3.jpg"
+  },
+  {
+    "url": "/static/temp_images/Dogs_google_1757872816_4.jpg",
+    "filename": "Dogs_google_5.jpg",
+    "engine": "google",
+    "local_path": "static\\temp_images\\Dogs_google_1757872816_4.jpg"
+  },
+  {
+    "url": "/static/temp_images/Dogs_google_1757872816_5.jpg",
+    "filename": "Dogs_google_6.jpg",
+    "engine": "google",
+    "local_path": "static\\temp_images\\Dogs_google_1757872816_5.jpg"
+  },
+  {
+    "url": "/static/temp_images/Dogs_google_1757872816_6.jpg",
+    "filename": "Dogs_google_7.jpg",
+    "engine": "google",
+    "local_path": "static\\temp_images\\Dogs_google_1757872816_6.jpg"
+  },
+  {
+    "url": "/static/temp_images/Dogs_google_1757872816_7.jpg",
+    "filename": "Dogs_google_8.jpg",
+    "engine": "google",
+    "local_path": "static\\temp_images\\Dogs_google_1757872816_7.jpg"
+  },
+  {
+    "url": "/static/temp_images/Dogs_google_1757872816_8.jpg",
+    "filename": "Dogs_google_9.jpg",
+    "engine": "google",
+    "local_path": "static\\temp_images\\Dogs_google_1757872816_8.jpg"
+  },
+  {
+    "url": "/static/temp_images/Dogs_google_1757872816_9.jpg",
+    "filename": "Dogs_google_10.jpg",
+    "engine": "google",
+    "local_path": "static\\temp_images\\Dogs_google_1757872816_9.jpg"
+  },
+  {
+    "url": "/static/temp_images/Dogs_google_1757872816_10.jpg",
+    "filename": "Dogs_google_11.jpg",
+    "engine": "google",
+    "local_path": "static\\temp_images\\Dogs_google_1757872816_10.jpg"
+  },
+  {
+    "url": "/static/temp_images/Dogs_google_1757872816_11.jpg",
+    "filename": "Dogs_google_12.jpg",
+    "engine": "google",
+    "local_path": "static\\temp_images\\Dogs_google_1757872816_11.jpg"
+  },
+  {
+    "url": "/static/temp_images/Dogs_google_1757872816_12.jpg",
+    "filename": "Dogs_google_13.jpg",
+    "engine": "google",
+    "local_path": "static\\temp_images\\Dogs_google_1757872816_12.jpg"
+  },
+  {
+    "url": "/static/temp_images/Dogs_google_1757872816_13.jpg",
+    "filename": "Dogs_google_14.jpg",
+    "engine": "google",
+    "local_path": "static\\temp_images\\Dogs_google_1757872816_13.jpg"
+  },
+  {
+    "url": "/static/temp_images/Dogs_google_1757872816_14.jpg",
+    "filename": "Dogs_google_15.jpg",
+    "engine": "google",
+    "local_path": "static\\temp_images\\Dogs_google_1757872816_14.jpg"
+  }
+]

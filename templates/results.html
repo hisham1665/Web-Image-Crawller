@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scraping Results - {{ topic }}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 2rem 0;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 1rem;
+        }
+        
+        .header {
+            background: white;
+            padding: 2rem;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 1rem;
+            font-size: 2.5rem;
+        }
+        
+        .stats {
+            background: #f8f9fa;
+            padding: 1rem;
+            border-radius: 8px;
+            margin: 1rem 0;
+            display: flex;
+            justify-content: space-around;
+            flex-wrap: wrap;
+        }
+        
+        .stat {
+            text-align: center;
+            margin: 0.5rem;
+        }
+        
+        .stat-number {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .stat-label {
+            color: #666;
+            font-size: 0.9rem;
+        }
+        
+        .actions {
+            margin: 1rem 0;
+        }
+        
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            margin: 0 10px 10px 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: transform 0.2s;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+        
+        .btn-danger {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+        }
+        
+        .btn-success {
+            background: linear-gradient(135deg, #51cf66 0%, #40c057 100%);
+        }
+        
+        .image-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 1rem;
+            margin-top: 2rem;
+        }
+        
+        .image-card {
+            background: white;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            transition: transform 0.3s;
+        }
+        
+        .image-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .image-card img {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .image-info {
+            padding: 1rem;
+            text-align: center;
+        }
+        
+        .image-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 0.5rem;
+        }
+        
+        .image-source {
+            font-size: 0.8rem;
+            color: #888;
+            margin-bottom: 0.5rem;
+            text-transform: capitalize;
+        }
+        
+        .download-btn {
+            display: inline-block;
+            padding: 8px 16px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            transition: transform 0.2s;
+        }
+        
+        .download-btn:hover {
+            transform: translateY(-1px);
+            text-decoration: none;
+            color: white;
+        }
+        
+        .error-message {
+            background: #ffe6e6;
+            border: 1px solid #ffcccc;
+            border-radius: 6px;
+        }
+        
+        .download-link {
+            color: #667eea;
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+        
+        .download-link:hover {
+            text-decoration: underline;
+        }
+        
+        .no-images {
+            background: white;
+            padding: 3rem;
+            border-radius: 15px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+        
+        .no-images h2 {
+            color: #666;
+            margin-bottom: 1rem;
+        }
+        
+        .error-message {
+            background: #ff6b6b;
+            color: white;
+            padding: 1rem;
+            border-radius: 8px;
+            margin: 1rem 0;
+            text-align: center;
+        }
+        
+        .success-message {
+            background: #51cf66;
+            color: white;
+            padding: 1rem;
+            border-radius: 8px;
+            margin: 1rem 0;
+            text-align: center;
+        }
+        
+        @media (max-width: 768px) {
+            .image-grid {
+                grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            }
+            
+            .stats {
+                flex-direction: column;
+            }
+            
+            h1 {
+                font-size: 2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📸 Results for "{{ topic }}"</h1>
+            
+            <div class="stats">
+                <div class="stat">
+                    <div class="stat-number">{{ total }}</div>
+                    <div class="stat-label">URLs Found</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-number">{{ requested }}</div>
+                    <div class="stat-label">Images Requested</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-number">{{ image_urls|length }}</div>
+                    <div class="stat-label">Unique URLs</div>
+                </div>
+            </div>
+            
+            {% if total > 0 %}
+                <div class="success-message">
+                    ✅ Successfully found {{ total }} image URLs!
+                </div>
+            {% endif %}
+            
+            <div class="actions">
+                <a href="/" class="btn">🔍 Search Again</a>
+                {% if total > 0 %}
+                    <a href="{{ url_for('download_all_images', topic=safe_topic) }}" class="btn btn-success">📦 Download All as ZIP</a>
+                    <a href="#" onclick="clearImages('{{ safe_topic }}')" class="btn btn-danger">🗑️ Clear Cache</a>
+                {% endif %}
+            </div>
+        </div>
+        
+        {% if image_urls %}
+            <div class="image-grid">
+                {% for url_data in image_urls %}
+                    <div class="image-card" data-index="{{ loop.index0 }}">
+                        <img src="{{ url_data.url }}" 
+                             alt="Image {{ loop.index }}" 
+                             loading="lazy"
+                             onerror="this.parentElement.querySelector('.error-message').style.display='block'; this.style.display='none';">
+                        <div class="error-message" style="display: none; padding: 1rem; text-align: center; color: #666;">
+                            ❌ Image failed to load
+                        </div>
+                        <div class="image-info">
+                            <div class="image-name">Image {{ loop.index }}</div>
+                            <div class="image-source">Source: {{ url_data.engine|title }}</div>
+                            <a href="{{ url_for('download_single_image', topic=safe_topic, image_index=loop.index0) }}" 
+                               class="download-btn">📥 Download</a>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="no-images">
+                <h2>😔 No images found</h2>
+                <p>Sorry, we couldn't find any images for "{{ topic }}". Try a different search term.</p>
+                <div style="margin-top: 2rem;">
+                    <a href="/" class="btn">🔍 Try Again</a>
+                </div>
+            </div>
+        {% endif %}
+    </div>
+
+    <script>
+        function clearImages(topic) {
+            if (confirm('Are you sure you want to delete the cached data for this topic?')) {
+                fetch(`/clear/${topic}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.message) {
+                            alert(data.message);
+                            window.location.href = '/';
+                        } else if (data.error) {
+                            alert('Error: ' + data.error);
+                        }
+                    })
+                    .catch(error => {
+                        alert('Error: ' + error);
+                    });
+            }
+        }
+        
+        // Add lightbox functionality
+        document.querySelectorAll('.image-card img').forEach(img => {
+            img.addEventListener('click', function() {
+                const lightbox = document.createElement('div');
+                lightbox.style.cssText = `
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background: rgba(0,0,0,0.8);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    z-index: 1000;
+                    cursor: pointer;
+                `;
+                
+                const lightboxImg = document.createElement('img');
+                lightboxImg.src = this.src;
+                lightboxImg.style.cssText = `
+                    max-width: 90%;
+                    max-height: 90%;
+                    object-fit: contain;
+                `;
+                
+                lightbox.appendChild(lightboxImg);
+                document.body.appendChild(lightbox);
+                
+                lightbox.addEventListener('click', () => {
+                    document.body.removeChild(lightbox);
+                });
+            });
+        });
+    </script>
+</body>
+</html>
