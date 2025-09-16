@@ -1,0 +1,55 @@
+{
+  "name": "HH Image Scrapper",
+  "short_name": "HH Scrapper",
+  "description": "Professional multi-engine image scrapping tool by Hisham with real-time progress tracking",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f0f23",
+  "theme_color": "#ff006e",
+  "orientation": "portrait-primary",
+  "categories": ["productivity", "utilities", "tools"],
+  "lang": "en-US",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/static/images/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/static/images/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/static/images/screenshot-desktop.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide"
+    },
+    {
+      "src": "/static/images/screenshot-mobile.png",
+      "sizes": "375x667",
+      "type": "image/png",
+      "form_factor": "narrow"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Quick Search",
+      "short_name": "Search",
+      "description": "Start image search immediately",
+      "url": "/?quick=true",
+      "icons": [
+        {
+          "src": "/static/images/shortcut-search.png",
+          "sizes": "96x96"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+User-agent: *
+Allow: /
+
+# Allow search engines to crawl everything
+Allow: /static/
+Allow: /static/css/
+Allow: /static/js/
+Allow: /static/images/
+
+# Block temporary directories
+Disallow: /static/temp_images/
+Disallow: /downloads/
+Disallow: /cache/
+
+# SEO Enhancement for HH Scrapper
+# Main pages to index
+Allow: /
+Allow: /about
+Allow: /features
+
+# Sitemap location
+Sitemap: https://your-domain.vercel.app/sitemap.xml
+
+# Crawl delay (be nice to servers)
+Crawl-delay: 1

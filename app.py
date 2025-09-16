@@ -400,6 +400,31 @@ def scrape_images_multi_engine(query, total_images_needed, session_id=None):
 def index():
     return render_template('index.html')
 
+@app.route('/robots.txt')
+def robots_txt():
+    """Serve robots.txt for SEO"""
+    return send_file('robots.txt', mimetype='text/plain')
+
+@app.route('/sitemap.xml')
+def sitemap_xml():
+    """Serve sitemap.xml for SEO"""
+    return send_file('sitemap.xml', mimetype='application/xml')
+
+@app.route('/manifest.json')
+def manifest_json():
+    """Serve PWA manifest"""
+    return send_file('static/manifest.json', mimetype='application/json')
+
+@app.route('/features')
+def features():
+    """Features page for SEO"""
+    return render_template('index.html')  # For now, redirect to main page
+
+@app.route('/about')
+def about():
+    """About page for SEO"""
+    return render_template('index.html')  # For now, redirect to main page
+
 @app.route('/progress/<session_id>')
 def progress_stream(session_id):
     """Server-Sent Events endpoint for real-time progress updates"""

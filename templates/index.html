@@ -2,20 +2,120 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="ImageScraper Pro - AI-powered multi-engine image collection tool. Search and download high-quality images from Google, Bing, Yandex, and DuckDuckGo with smart duplicate detection.">
-    <meta name="keywords" content="image scraper, download images, multi-engine search, Google images, Bing images, Yandex images, DuckDuckGo images">
-    <meta name="author" content="ImageScraper Pro">
+    <meta name="viewport" content="wi    <!-- Preconnect to external domains for faster loading -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+    
+    <!-- External CSS -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">th, initial-scale=1.0">
+    
+    <!-- Primary SEO Meta Tags for HH Scrapper -->
+    <title>HH Image Scrapper - Advanced Multi-Engine Image Download Tool | Hisham</title>
+    <meta name="title" content="HH Image Scrapper - Advanced Multi-Engine Image Download Tool | Hisham">
+    <meta name="description" content="HH Image Scrapper by Hisham - Professional image downloading tool with real-time progress. Search Google, Bing, Yandex & DuckDuckGo simultaneously. Download thousands of high-quality images instantly.">
+    <meta name="keywords" content="hh scrapper, hh image scrapper, image scrapper, bulk image download, hisham scrapper, multi-engine image search, google image downloader, bing image scrapper, yandex images, duckduckgo images, batch image download, image collection tool, professional scrapper">
+    <meta name="robots" content="index, follow">
+    <meta name="language" content="English">
+    <meta name="author" content="Hisham (@hisham1665)">
+    <meta name="publisher" content="HH Scrapper">
+    <meta name="copyright" content="2025 Hisham - HH Scrapper">
     <meta name="theme-color" content="#ff006e">
+    
+    <!-- Enhanced SEO -->
+    <meta name="rating" content="General">
+    <meta name="distribution" content="Global">
+    <meta name="revisit-after" content="7 days">
+    <meta name="expires" content="never">
+    <meta name="url" content="https://your-domain.vercel.app">
+    <meta name="identifier-URL" content="https://your-domain.vercel.app">
+    <meta name="category" content="Technology, Tools, Image Processing, Web Scrapping">
+    <meta name="coverage" content="Worldwide">
+    <meta name="target" content="developers, designers, content creators, researchers">
     
     <!-- 🎯 Easter Egg: Crafted with passion by Hisham - The Code Wizard 🧙‍♂️ -->
     <!-- If you're reading this, you found the secret! Contact @hisham1665 for exclusive features 🚀 -->
     
-    <!-- Open Graph / Social Media -->
+    <!-- Open Graph / Facebook Meta Tags -->
     <meta property="og:type" content="website">
-    <meta property="og:title" content="ImageScraper Pro - AI Multi-Engine Collection">
-    <meta property="og:description" content="Professional image scraping tool with smart AI filtering and multi-engine search capabilities">
-    <meta property="og:image" content="{{ url_for('static', filename='images/og-image.jpg') }}">
+    <meta property="og:site_name" content="HH Image Scrapper">
+    <meta property="og:title" content="HH Image Scrapper - Advanced Multi-Engine Image Download Tool">
+    <meta property="og:description" content="Professional image scrapping tool by Hisham. Download thousands of images from Google, Bing, Yandex & DuckDuckGo with real-time progress tracking.">
+    <meta property="og:image" content="https://your-domain.vercel.app/static/images/hh-scrapper-og.jpg">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="HH Image Scrapper - Multi-Engine Tool by Hisham">
+    <meta property="og:url" content="https://your-domain.vercel.app">
+    <meta property="og:locale" content="en_US">
+    
+    <!-- Twitter Card Meta Tags -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:site" content="@hisham1665">
+    <meta name="twitter:creator" content="@hisham1665">
+    <meta name="twitter:title" content="HH Image Scrapper - Advanced Multi-Engine Tool">
+    <meta name="twitter:description" content="Professional image scrapping by Hisham. Multi-engine search, real-time progress, bulk download.">
+    <meta name="twitter:image" content="https://your-domain.vercel.app/static/images/hh-scrapper-twitter.jpg">
+    <meta name="twitter:image:alt" content="HH Image Scrapper Interface">
+    
+    <!-- Additional SEO for HH Scrapper -->
+    <meta name="application-name" content="HH Image Scrapper">
+    <meta name="apple-mobile-web-app-title" content="HH Scrapper">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    
+    <!-- Canonical URL -->
+    <link rel="canonical" href="https://your-domain.vercel.app/">
+    
+    <!-- Favicon and Icons -->
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='images/apple-touch-icon.png') }}">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='images/favicon-32x32.png') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='images/favicon-16x16.png') }}">
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+    
+    <!-- Structured Data (JSON-LD) for Better SEO -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "HH Image Scrapper",
+        "alternateName": ["HH Scrapper", "Hisham Image Scrapper"],
+        "description": "Advanced multi-engine image scrapping tool by Hisham with real-time progress tracking",
+        "url": "https://your-domain.vercel.app",
+        "applicationCategory": "Utility",
+        "operatingSystem": "Web Browser",
+        "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD"
+        },
+        "creator": {
+            "@type": "Person",
+            "name": "Hisham",
+            "sameAs": "https://github.com/hisham1665"
+        },
+        "publisher": {
+            "@type": "Organization",
+            "name": "HH Scrapper",
+            "logo": {
+                "@type": "ImageObject",
+                "url": "https://your-domain.vercel.app/static/images/logo.png"
+            }
+        },
+        "featureList": [
+            "Multi-engine image search",
+            "Real-time progress tracking", 
+            "Bulk image download",
+            "Duplicate detection",
+            "High-quality filtering"
+        ]
+    }
+    </script>
     
     <!-- Preconnect to external domains for faster loading -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -109,9 +209,9 @@
         <header class="header">
             <h1 class="logo" role="banner">
                 <i class="fas fa-robot" aria-hidden="true"></i> 
-                <span>ImageScraper</span>
+                <span>HH Image Scrapper</span>
             </h1>
-            <p class="tagline">Get exactly what you need, when you need it</p>
+            <p class="tagline">Professional Multi-Engine Tool by Hisham - Get exactly what you need, when you need it</p>
         </header>
         
         <section class="main-card" role="main">
