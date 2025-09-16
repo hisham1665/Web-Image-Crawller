@@ -611,11 +611,18 @@ def get_results(session_id):
 def serve_temp_image(filename):
     """Serve temporary images from /tmp directory for Vercel"""
     try:
-        temp_path = os.path.join('/tmp', 'temp_images', filename)
-        if os.path.exists(temp_path):
-            return send_file(temp_path)
-        else:
-            return "Image not found", 404
+        # Check both locations
+        temp_locations = [
+            os.path.join('/tmp', 'temp_images'),
+            os.path.join('static', 'temp_images')
+        ]
+        
+        for temp_path in temp_locations:
+            file_path = os.path.join(temp_path, filename)
+            if os.path.exists(file_path):
+                return send_file(file_path)
+        
+        return "Image not found", 404
     except Exception as e:
         return f"Error serving image: {str(e)}", 500
 
@@ -632,9 +639,14 @@ def download_image(topic, index):
         files = []
         for temp_dir in temp_locations:
             if os.path.exists(temp_dir):
-                files.extend([f for f in os.listdir(temp_dir) 
-                            if f.startswith(safe_folder_name(topic)) and 
-                            f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'))])
+                dir_files = os.listdir(temp_dir)
+                for f in dir_files:
+                    # Check multiple patterns: prod_ prefix or topic-based names
+                    if (f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp')) and 
+                        (f.startswith('prod_') or 
+                         safe_folder_name(topic).lower() in f.lower() or
+                         f.startswith(safe_folder_name(topic)))):
+                        files.append(f)
         
         if index >= len(files):
             return "Image not found", 404
@@ -673,17 +685,42 @@ def download_all_zip(topic):
         files = []
         for temp_dir in temp_locations:
             if os.path.exists(temp_dir):
-                files.extend([f for f in os.listdir(temp_dir) 
-                            if f.startswith(safe_folder_name(topic)) and 
-                            f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'))])
+                # Look for files with different naming patterns
+                dir_files = os.listdir(temp_dir)
+                for f in dir_files:
+                    # Check multiple patterns: prod_ prefix or topic-based names
+                    if (f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp')) and 
+                        (f.startswith('prod_') or 
+                         safe_folder_name(topic).lower() in f.lower() or
+                         f.startswith(safe_folder_name(topic)))):
+                        files.append(f)
+        
+        print(f"DEBUG: Looking for topic '{topic}', safe_name '{safe_folder_name(topic)}'")
+        print(f"DEBUG: Found {len(files)} files: {files[:5]}...")  # Show first 5 files
         
         if not files:
-            return "No images found", 404
+            # Get session results if available
+            session_files = []
+            with progress_lock:
+                for session_id, data in progress_data.items():
+                    if data.get('topic') == topic and data.get('status') == 'completed':
+                        images = data.get('images', [])
+                        for img in images:
+                            local_path = img.get('local_path') or img.get('temp_path')
+                            if local_path and os.path.exists(local_path):
+                                session_files.append(os.path.basename(local_path))
+            
+            if session_files:
+                files = session_files
+                print(f"DEBUG: Found {len(session_files)} files from session data")
+            else:
+                return "No images found for this topic. Please run a search first.", 404
         
         # Create ZIP in memory
         zip_buffer = io.BytesIO()
         
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            added_count = 0
             for i, filename in enumerate(files):
                 # Find the actual file path
                 file_path = None
@@ -696,12 +733,16 @@ def download_all_zip(topic):
                 if file_path:
                     # Use a clean filename in the ZIP
                     _, ext = os.path.splitext(filename)
-                    clean_name = f"{safe_folder_name(topic)}_{i+1}{ext}"
+                    clean_name = f"{safe_folder_name(topic)}_{added_count+1}{ext}"
                     zip_file.write(file_path, clean_name)
+                    added_count += 1
+        
+        if added_count == 0:
+            return f"No accessible image files found for '{topic}'. Files may have expired.", 404
         
         zip_buffer.seek(0)
         
-        zip_filename = f"{safe_folder_name(topic)}_images.zip"
+        zip_filename = f"{safe_folder_name(topic)}_images_{added_count}_files.zip"
         
         return send_file(
             io.BytesIO(zip_buffer.read()),
@@ -713,6 +754,60 @@ def download_all_zip(topic):
     except Exception as e:
         print(f"ZIP download error: {e}")
         return f"Error creating ZIP: {str(e)}", 500
+
+@app.route('/debug/<topic>')
+def debug_files(topic):
+    """Debug route to check what files exist for a topic"""
+    try:
+        temp_locations = [
+            os.path.join('/tmp', 'temp_images'),
+            os.path.join('static', 'temp_images')
+        ]
+        
+        debug_info = {
+            'topic': topic,
+            'safe_topic': safe_folder_name(topic),
+            'locations_checked': temp_locations,
+            'files_found': {}
+        }
+        
+        for temp_dir in temp_locations:
+            if os.path.exists(temp_dir):
+                all_files = os.listdir(temp_dir)
+                matching_files = []
+                for f in all_files:
+                    if (f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp')) and 
+                        (f.startswith('prod_') or 
+                         safe_folder_name(topic).lower() in f.lower() or
+                         f.startswith(safe_folder_name(topic)))):
+                        matching_files.append(f)
+                
+                debug_info['files_found'][temp_dir] = {
+                    'total_files': len(all_files),
+                    'matching_files': matching_files,
+                    'first_5_all_files': all_files[:5]
+                }
+            else:
+                debug_info['files_found'][temp_dir] = {'error': 'Directory does not exist'}
+        
+        # Check session data
+        session_info = []
+        with progress_lock:
+            for session_id, data in progress_data.items():
+                if data.get('topic') == topic:
+                    session_info.append({
+                        'session_id': session_id,
+                        'status': data.get('status'),
+                        'images_count': len(data.get('images', [])),
+                        'sample_image': data.get('images', [{}])[0] if data.get('images') else None
+                    })
+        
+        debug_info['session_data'] = session_info
+        
+        return jsonify(debug_info)
+        
+    except Exception as e:
+        return jsonify({'error': str(e)})
 
 @app.route('/clear/<topic>')
 def clear_cache(topic):
