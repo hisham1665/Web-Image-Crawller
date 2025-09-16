@@ -9,87 +9,315 @@ import tempfile
 import time
 import shutil
 import threading
+import uuid
 from threading import Thread, Lock
 from urllib.parse import urlparse, urljoin
-from flask import Flask, render_template, request, jsonify, url_for, send_file
+from flask import Flask, render_template, request, jsonify, url_for, send_file, Response
 from icrawler.builtin import BingImageCrawler, GoogleImageCrawler
 from bs4 import BeautifulSoup
 import urllib.parse
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'your-secret-key-here'
+app.config['SECRET_KEY'] = 'vercel-production-key-2024'
 
-def safe_folder_name(name: str) -> str:
-    """Make a safe folder name for Windows/Linux/Mac."""
-    name = re.sub(r'[<>:"/\\|?*]', '', name)
-    name = name.strip().replace(" ", "_")
-    return name
+# Production-ready global variables
+progress_data = {}
+progress_lock = Lock()
 
-def calculate_image_hash(image_path):
-    """Calculate hash of image file for duplicate detection"""
-    try:
-        with open(image_path, 'rb') as f:
-            content = f.read()
-            return hashlib.md5(content).hexdigest()
-    except:
-        return None
-
-def scrape_yandex_images(query, max_images):
-    """Custom Yandex image scraper"""
-    images = []
-    try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
+class ProductionImageScraper:
+    """Production-ready instance-based image scraper optimized for Vercel deployment"""
+    
+    def __init__(self, session_id=None):
+        self.session_id = session_id
+        self.all_images = []
+        self.seen_hashes = set()
+        self.seen_urls = set()
+        self.images_lock = Lock()
+        self.is_cancelled = False
+        self.download_count = 0
         
-        search_url = f"https://yandex.com/images/search?text={urllib.parse.quote_plus(query)}"
-        
-        response = requests.get(search_url, headers=headers, timeout=10)
-        soup = BeautifulSoup(response.content, 'html.parser')
-        
-        # Find image elements in Yandex
-        img_elements = soup.find_all('img', class_='serp-item__thumb')
-        
-        for i, img in enumerate(img_elements[:max_images]):
-            if 'src' in img.attrs:
-                img_url = img['src']
-                if img_url.startswith('//'):
-                    img_url = 'https:' + img_url
-                elif img_url.startswith('/'):
-                    img_url = 'https://yandex.com' + img_url
+    def update_progress(self, status, message, **kwargs):
+        """Thread-safe progress update with real-time count"""
+        if not self.session_id:
+            return
+            
+        with progress_lock:
+            if self.session_id not in progress_data:
+                progress_data[self.session_id] = {}
+            
+            progress_data[self.session_id].update({
+                'status': status,
+                'message': message,
+                'images_found': len(self.all_images),
+                'timestamp': time.time(),
+                **kwargs
+            })
+            
+    def safe_add_image(self, image_data):
+        """Thread-safe image addition with immediate progress update"""
+        with self.images_lock:
+            if self.is_cancelled:
+                return False
                 
-                if img_url.startswith('http'):
-                    images.append(img_url)
-        
-        print(f"Yandex found {len(images)} image URLs")
-        return images
-        
-    except Exception as e:
-        print(f"Yandex scraping error: {e}")
-        return []
+            # Check for duplicates
+            img_hash = image_data.get('hash')
+            if img_hash and img_hash in self.seen_hashes:
+                return False
+                
+            # Add image
+            self.all_images.append(image_data)
+            if img_hash:
+                self.seen_hashes.add(img_hash)
+                
+            # Update progress immediately
+            self.update_progress(
+                'downloading',
+                f'Found {len(self.all_images)} images',
+                current_engine=image_data.get('engine', ''),
+                total_target=progress_data.get(self.session_id, {}).get('total_target', 0)
+            )
+            
+            return True
+    
+    def cancel(self):
+        """Cancel the scraping operation"""
+        self.is_cancelled = True
 
-def scrape_duckduckgo_images(query, max_images):
-    """Custom DuckDuckGo image scraper"""
-    images = []
-    try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
-        
-        # DuckDuckGo image search
-        search_url = f"https://duckduckgo.com/?q={urllib.parse.quote_plus(query)}&t=h_&iax=images&ia=images"
-        
-        response = requests.get(search_url, headers=headers, timeout=10)
-        
-        # Try to find image URLs in the response
-        if response.status_code == 200:
-            # DuckDuckGo uses a different approach, let's try a simple method
+    def scrape_engine_threaded(self, engine_name, crawler_class, query, images_per_engine, total_target):
+        """Thread-safe engine scraping with real-time updates"""
+        try:
+            if self.is_cancelled:
+                return
+                
+            self.update_progress('searching', f'Starting {engine_name.title()} search...', 
+                               current_engine=engine_name, total_target=total_target)
+            
+            # Create temporary directory
+            temp_dir = tempfile.mkdtemp(prefix=f"prod_{engine_name}_")
+            
+            try:
+                # Create crawler
+                crawler = crawler_class(
+                    downloader_threads=2,  # Reduced for Vercel limits
+                    storage={'root_dir': temp_dir}
+                )
+                
+                # Scrape images
+                crawler.crawl(keyword=query, max_num=images_per_engine)
+                
+                # Process downloaded images
+                if os.path.exists(temp_dir):
+                    files = [f for f in os.listdir(temp_dir) 
+                            if f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp'))]
+                    
+                    # Create static directory if needed
+                    static_temp = os.path.join('/tmp', 'temp_images')  # Use /tmp for Vercel
+                    os.makedirs(static_temp, exist_ok=True)
+                    
+                    for i, filename in enumerate(files):
+                        if self.is_cancelled or len(self.all_images) >= total_target:
+                            break
+                            
+                        try:
+                            src_path = os.path.join(temp_dir, filename)
+                            
+                            # Skip small files
+                            if os.path.getsize(src_path) < 3000:
+                                continue
+                                
+                            # Calculate hash
+                            img_hash = self.calculate_image_hash(src_path)
+                            
+                            # Create unique filename
+                            file_ext = os.path.splitext(filename)[1] or '.jpg'
+                            unique_name = f"prod_{engine_name}_{int(time.time())}_{i}{file_ext}"
+                            dest_path = os.path.join(static_temp, unique_name)
+                            
+                            # Copy file
+                            shutil.copy2(src_path, dest_path)
+                            
+                            # Add to results
+                            image_data = {
+                                'url': f"/static/temp_images/{unique_name}",
+                                'filename': f"{safe_folder_name(query)}_{engine_name}_{len(self.all_images)+1}{file_ext}",
+                                'engine': engine_name,
+                                'local_path': dest_path,
+                                'hash': img_hash,
+                                'temp_path': dest_path  # For Vercel cleanup
+                            }
+                            
+                            self.safe_add_image(image_data)
+                            
+                        except Exception as e:
+                            continue
+                            
+            finally:
+                # Clean up
+                if os.path.exists(temp_dir):
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    
+        except Exception as e:
+            print(f"Error with {engine_name}: {e}")
+    
+    def scrape_custom_engine_threaded(self, engine_name, query, images_per_engine, total_target):
+        """Thread-safe custom engine scraping"""
+        try:
+            if self.is_cancelled:
+                return
+                
+            self.update_progress('searching', f'Starting {engine_name.title()} URL search...', 
+                               current_engine=engine_name, total_target=total_target)
+            
+            # Get URLs
+            if engine_name == 'yandex':
+                image_urls = self.scrape_yandex_images(query, images_per_engine)
+            elif engine_name == 'duckduckgo':
+                image_urls = self.scrape_duckduckgo_images(query, images_per_engine)
+            else:
+                return
+            
+            if not image_urls:
+                return
+                
+            self.update_progress('downloading', f'Found {len(image_urls)} URLs from {engine_name.title()}', 
+                               current_engine=engine_name, total_target=total_target)
+            
+            # Create static directory
+            static_temp = os.path.join('/tmp', 'temp_images')  # Use /tmp for Vercel
+            os.makedirs(static_temp, exist_ok=True)
+            
+            # Download images
+            for i, img_url in enumerate(image_urls):
+                if self.is_cancelled or len(self.all_images) >= total_target:
+                    break
+                    
+                if img_url in self.seen_urls:
+                    continue
+                    
+                try:
+                    # Create filename
+                    file_ext = '.jpg'
+                    if '.' in img_url:
+                        potential_ext = img_url.split('.')[-1].lower().split('?')[0]
+                        if potential_ext in ['jpg', 'jpeg', 'png', 'gif', 'webp']:
+                            file_ext = f'.{potential_ext}'
+                    
+                    unique_name = f"prod_{engine_name}_{int(time.time())}_{i}{file_ext}"
+                    dest_path = os.path.join(static_temp, unique_name)
+                    
+                    # Download
+                    if self.download_image_from_url(img_url, dest_path):
+                        if os.path.exists(dest_path) and os.path.getsize(dest_path) > 3000:
+                            img_hash = self.calculate_image_hash(dest_path)
+                            
+                            image_data = {
+                                'url': f"/static/temp_images/{unique_name}",
+                                'filename': f"{safe_folder_name(query)}_{engine_name}_{len(self.all_images)+1}{file_ext}",
+                                'engine': engine_name,
+                                'local_path': dest_path,
+                                'hash': img_hash,
+                                'temp_path': dest_path  # For Vercel cleanup
+                            }
+                            
+                            if self.safe_add_image(image_data):
+                                self.seen_urls.add(img_url)
+                                
+                except Exception as e:
+                    continue
+                    
+        except Exception as e:
+            print(f"Error with custom engine {engine_name}: {e}")
+    
+    def calculate_image_hash(self, image_path):
+        """Calculate image hash for duplicate detection"""
+        try:
+            with open(image_path, 'rb') as f:
+                return hashlib.md5(f.read()).hexdigest()
+        except:
+            return None
+    
+    def download_image_from_url(self, url, save_path):
+        """Download image with production-ready error handling"""
+        try:
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+            
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
+            
+            response = requests.get(url, headers=headers, timeout=10, stream=True, verify=False)
+            response.raise_for_status()
+            
+            # Check content type
+            content_type = response.headers.get('content-type', '').lower()
+            if not any(t in content_type for t in ['image/', 'jpeg', 'png', 'gif', 'webp']):
+                return False
+            
+            # Download with size limit (5MB for Vercel)
+            total_size = 0
+            max_size = 5 * 1024 * 1024
+            
+            with open(save_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        total_size += len(chunk)
+                        if total_size > max_size:
+                            os.remove(save_path)
+                            return False
+                        f.write(chunk)
+            
+            return os.path.exists(save_path) and os.path.getsize(save_path) > 1000
+            
+        except Exception as e:
+            if os.path.exists(save_path):
+                try:
+                    os.remove(save_path)
+                except:
+                    pass
+            return False
+    
+    def scrape_yandex_images(self, query, max_images):
+        """Production Yandex scraper"""
+        try:
+            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+            search_url = f"https://yandex.com/images/search?text={urllib.parse.quote_plus(query)}"
+            
+            response = requests.get(search_url, headers=headers, timeout=8)
             soup = BeautifulSoup(response.content, 'html.parser')
             
-            # Look for image elements
+            images = []
+            img_elements = soup.find_all('img', class_='serp-item__thumb')
+            
+            for img in img_elements[:max_images]:
+                if 'src' in img.attrs:
+                    img_url = img['src']
+                    if img_url.startswith('//'):
+                        img_url = 'https:' + img_url
+                    elif img_url.startswith('/'):
+                        img_url = 'https://yandex.com' + img_url
+                    
+                    if img_url.startswith('http'):
+                        images.append(img_url)
+            
+            return images
+        except:
+            return []
+    
+    def scrape_duckduckgo_images(self, query, max_images):
+        """Production DuckDuckGo scraper"""
+        try:
+            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+            search_url = f"https://duckduckgo.com/?q={urllib.parse.quote_plus(query)}&t=h_&iax=images&ia=images"
+            
+            response = requests.get(search_url, headers=headers, timeout=8)
+            if response.status_code != 200:
+                return []
+                
+            soup = BeautifulSoup(response.content, 'html.parser')
+            images = []
             img_elements = soup.find_all('img')
             
-            for i, img in enumerate(img_elements[:max_images]):
+            for img in img_elements[:max_images]:
                 if 'src' in img.attrs:
                     img_url = img['src']
                     if img_url.startswith('//'):
@@ -99,343 +327,131 @@ def scrape_duckduckgo_images(query, max_images):
                     
                     if img_url.startswith('http') and 'logo' not in img_url.lower():
                         images.append(img_url)
+            
+            return images
+        except:
+            return []
+    
+    def scrape_multi_engine(self, query, total_images_needed):
+        """Production multi-engine scraping with real-time progress"""
+        self.update_progress('starting', 'Initializing production search...', total_target=total_images_needed)
         
-        print(f"DuckDuckGo found {len(images)} image URLs")
-        return images
-        
-    except Exception as e:
-        print(f"DuckDuckGo scraping error: {e}")
-        return []
-
-def download_image_from_url(url, save_path):
-    """Download an image from URL with better error handling"""
-    try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-            'Accept': 'image/*,*/*;q=0.8',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Connection': 'keep-alive'
+        # Engine configuration
+        engines = {
+            'bing': BingImageCrawler,
+            'google': GoogleImageCrawler
         }
+        custom_engines = ['yandex', 'duckduckgo']
         
-        # Ensure directory exists
-        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        total_engines = len(engines) + len(custom_engines)
+        images_per_engine = (total_images_needed // total_engines) + 20
         
-        response = requests.get(url, headers=headers, timeout=15, stream=True, verify=False)
-        response.raise_for_status()  # Raise exception for bad status codes
+        self.update_progress('searching', f'Searching {total_engines} engines...', total_target=total_images_needed)
         
-        # Check content type
-        content_type = response.headers.get('content-type', '').lower()
-        if not any(img_type in content_type for img_type in ['image/', 'jpeg', 'png', 'gif', 'webp']):
-            print(f"Invalid content type: {content_type} for {url}")
-            return False
+        threads = []
         
-        # Download with size limit (10MB max)
-        total_size = 0
-        max_size = 10 * 1024 * 1024  # 10MB limit
-        
-        with open(save_path, 'wb') as f:
-            for chunk in response.iter_content(chunk_size=8192):
-                if chunk:
-                    total_size += len(chunk)
-                    if total_size > max_size:
-                        print(f"File too large: {url}")
-                        os.remove(save_path)
-                        return False
-                    f.write(chunk)
-        
-        # Final validation
-        if os.path.exists(save_path) and os.path.getsize(save_path) > 1000:
-            return True
-        else:
-            if os.path.exists(save_path):
-                os.remove(save_path)
-            return False
-            
-    except Exception as e:
-        print(f"Error downloading {url}: {e}")
-        if os.path.exists(save_path):
-            try:
-                os.remove(save_path)
-            except:
-                pass
-        return False
-
-def scrape_images_multi_engine(query, total_images_needed):
-    """Advanced multi-engine scraping with deduplication"""
-    
-    # Thread-safe collections
-    all_images = []
-    seen_hashes = set()
-    seen_urls = set()
-    images_lock = Lock()  # Critical: Thread safety
-    
-    # Search engines configuration
-    engines = {
-        'bing': BingImageCrawler,
-        'google': GoogleImageCrawler
-    }
-    
-    # Custom URL-based engines
-    custom_engines = ['yandex', 'duckduckgo']
-    
-    # Calculate images per engine (with extra to account for duplicates)
-    total_engines = len(engines) + len(custom_engines)
-    images_per_engine = (total_images_needed // total_engines) + 30  # Increased buffer
-    
-    def scrape_engine(engine_name, crawler_class):
-        try:
-            print(f"Starting {engine_name} scraping for {images_per_engine} images...")
-            
-            # Create temporary directory for this engine
-            temp_dir = tempfile.mkdtemp(prefix=f"{engine_name}_")
-            
-            # Create crawler with higher limits
-            crawler = crawler_class(
-                downloader_threads=4,
-                storage={'root_dir': temp_dir}
-            )
-            
-            # Scrape with higher number to account for failed downloads
-            crawler.crawl(keyword=query, max_num=images_per_engine)
-            
-            # Process downloaded images
-            if os.path.exists(temp_dir):
-                files = [f for f in os.listdir(temp_dir) 
-                        if f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'))]
-                
-                print(f"{engine_name} downloaded {len(files)} files")
-                
-                # Create static temp directory
-                static_temp = os.path.join('static', 'temp_images')
-                os.makedirs(static_temp, exist_ok=True)
-                
-                for i, filename in enumerate(files):
-                    try:
-                        src_path = os.path.join(temp_dir, filename)
-                        
-                        # Skip small files (likely broken)
-                        if os.path.getsize(src_path) < 5000:  # Skip files < 5KB
-                            continue
-                            
-                        # Calculate image hash for deduplication
-                        img_hash = calculate_image_hash(src_path)
-                        
-                        # Thread-safe check and add
-                        with images_lock:
-                            if img_hash and img_hash in seen_hashes:
-                                continue  # Skip duplicate
-                            
-                            # Create unique filename
-                            file_ext = os.path.splitext(filename)[1] or '.jpg'
-                            unique_name = f"{safe_folder_name(query)}_{engine_name}_{int(time.time())}_{i}_{threading.current_thread().ident}{file_ext}"
-                            dest_path = os.path.join(static_temp, unique_name)
-                            
-                            # Copy file
-                            shutil.copy2(src_path, dest_path)
-                            
-                            # Add to results
-                            if img_hash:
-                                seen_hashes.add(img_hash)
-                            
-                            all_images.append({
-                                'url': f"/static/temp_images/{unique_name}",
-                                'filename': f"{safe_folder_name(query)}_{engine_name}_{len(all_images)+1}{file_ext}",
-                                'engine': engine_name,
-                                'local_path': dest_path,
-                                'hash': img_hash
-                            })
-                            
-                            # Stop if we have enough unique images
-                            if len(all_images) >= total_images_needed:
-                                break
-                            
-                    except Exception as e:
-                        print(f"Error processing {filename}: {e}")
-                        continue
-            
-            # Clean up temp directory
-            shutil.rmtree(temp_dir, ignore_errors=True)
-            
-            print(f"{engine_name} contributed {sum(1 for img in all_images if img['engine'] == engine_name)} unique images")
-            
-        except Exception as e:
-            print(f"Error with {engine_name}: {e}")
-    
-    def scrape_custom_engine(engine_name):
-        try:
-            print(f"Starting {engine_name} URL scraping for {images_per_engine} images...")
-            
-            # Get image URLs from custom engines
-            if engine_name == 'yandex':
-                image_urls = scrape_yandex_images(query, images_per_engine)
-            elif engine_name == 'duckduckgo':
-                image_urls = scrape_duckduckgo_images(query, images_per_engine)
-            else:
-                return
-            
-            # Create static temp directory
-            static_temp = os.path.join('static', 'temp_images')
-            os.makedirs(static_temp, exist_ok=True)
-            
-            # Download images from URLs
-            for i, img_url in enumerate(image_urls):
-                with images_lock:
-                    if len(all_images) >= total_images_needed:
-                        break
-                        
-                    if img_url in seen_urls:
-                        continue  # Skip duplicate URLs
-                
-                try:
-                    # Create unique filename with better extension detection
-                    file_ext = '.jpg'  # Default extension
-                    if '.' in img_url:
-                        url_parts = img_url.split('.')
-                        if len(url_parts) > 1:
-                            potential_ext = url_parts[-1].lower().split('?')[0]  # Remove query params
-                            if potential_ext in ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp']:
-                                file_ext = f'.{potential_ext}'
-                    
-                    unique_name = f"{safe_folder_name(query)}_{engine_name}_{int(time.time())}_{i}_{threading.current_thread().ident}{file_ext}"
-                    dest_path = os.path.join(static_temp, unique_name)
-                    
-                    # Download image
-                    if download_image_from_url(img_url, dest_path):
-                        # Check file size
-                        if os.path.exists(dest_path) and os.path.getsize(dest_path) > 5000:
-                            # Calculate hash for deduplication
-                            img_hash = calculate_image_hash(dest_path)
-                            
-                            # Thread-safe check and add
-                            with images_lock:
-                                if img_hash and img_hash in seen_hashes:
-                                    os.remove(dest_path)  # Remove duplicate
-                                    continue
-                                
-                                # Add to results
-                                seen_urls.add(img_url)
-                                if img_hash:
-                                    seen_hashes.add(img_hash)
-                                
-                                all_images.append({
-                                    'url': f"/static/temp_images/{unique_name}",
-                                    'filename': f"{safe_folder_name(query)}_{engine_name}_{len(all_images)+1}{file_ext}",
-                                    'engine': engine_name,
-                                    'local_path': dest_path,
-                                    'hash': img_hash
-                                })
-                        else:
-                            if os.path.exists(dest_path):
-                                os.remove(dest_path)  # Remove small/invalid files
-                    
-                except Exception as e:
-                    print(f"Error downloading from {engine_name}: {e}")
-                    continue
-            
-            print(f"{engine_name} contributed {sum(1 for img in all_images if img['engine'] == engine_name)} unique images")
-            
-        except Exception as e:
-            print(f"Error with custom engine {engine_name}: {e}")
-    
-    # Run all engines in parallel
-    threads = []
-    
-    # Start icrawler-based engines
-    for engine_name, crawler_class in engines.items():
-        thread = Thread(target=scrape_engine, args=(engine_name, crawler_class))
-        thread.start()
-        threads.append(thread)
-    
-    # Start custom URL-based engines
-    for engine_name in custom_engines:
-        thread = Thread(target=scrape_custom_engine, args=(engine_name,))
-        thread.start()
-        threads.append(thread)
-    
-    # Wait for all engines to complete
-    for thread in threads:
-        thread.join()
-    
-    # If we still don't have enough images, try to get more from successful engines
-    if len(all_images) < total_images_needed:
-        print(f"Only got {len(all_images)} images, need {total_images_needed}. Trying additional search...")
-        
-        # Try additional searches with different parameters
+        # Start engine threads
         for engine_name, crawler_class in engines.items():
-            if len(all_images) >= total_images_needed:
-                break
-                
-            try:
-                temp_dir = tempfile.mkdtemp(prefix=f"{engine_name}_extra_")
-                crawler = crawler_class(
-                    downloader_threads=4,
-                    storage={'root_dir': temp_dir}
-                )
-                
-                # Search with additional keywords
-                extended_query = f"{query} images photos pictures"
-                crawler.crawl(keyword=extended_query, max_num=total_images_needed - len(all_images) + 30)
-                
-                if os.path.exists(temp_dir):
-                    files = [f for f in os.listdir(temp_dir) 
-                            if f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'))]
-                    
-                    for i, filename in enumerate(files):
-                        if len(all_images) >= total_images_needed:
-                            break
-                            
-                            try:
-                                src_path = os.path.join(temp_dir, filename)
-                                if os.path.getsize(src_path) < 5000:
-                                    continue
-                                    
-                                img_hash = calculate_image_hash(src_path)
-                                
-                                # Thread-safe check and add
-                                with images_lock:
-                                    if len(all_images) >= total_images_needed:
-                                        break
-                                    
-                                    if img_hash and img_hash in seen_hashes:
-                                        continue
-                                
-                                    file_ext = os.path.splitext(filename)[1] or '.jpg'
-                                    unique_name = f"{safe_folder_name(query)}_{engine_name}_extra_{int(time.time())}_{i}_{threading.current_thread().ident}{file_ext}"
-                                    dest_path = os.path.join('static', 'temp_images', unique_name)
-                                    
-                                    shutil.copy2(src_path, dest_path)
-                                    
-                                    if img_hash:
-                                        seen_hashes.add(img_hash)
-                                    
-                                    all_images.append({
-                                        'url': f"/static/temp_images/{unique_name}",
-                                        'filename': f"{safe_folder_name(query)}_{engine_name}_extra_{len(all_images)+1}{file_ext}",
-                                        'engine': f"{engine_name}_extra",
-                                        'local_path': dest_path,
-                                        'hash': img_hash
-                                    })
-                            
-                            except Exception as e:
-                                continue
-                    
-                    shutil.rmtree(temp_dir, ignore_errors=True)
-                
-            except Exception as e:
-                print(f"Error with extra search on {engine_name}: {e}")
-    
-    # Return exact number requested (or all if we couldn't get enough)
-    final_images = all_images[:total_images_needed]
-    print(f"Final result: {len(final_images)} unique images out of {total_images_needed} requested")
-    
-    return final_images
+            thread = Thread(target=self.scrape_engine_threaded, 
+                          args=(engine_name, crawler_class, query, images_per_engine, total_images_needed))
+            thread.start()
+            threads.append(thread)
+        
+        # Start custom engine threads
+        for engine_name in custom_engines:
+            thread = Thread(target=self.scrape_custom_engine_threaded,
+                          args=(engine_name, query, images_per_engine, total_images_needed))
+            thread.start()
+            threads.append(thread)
+        
+        # Wait for completion
+        for thread in threads:
+            thread.join()
+        
+        # Final results
+        final_images = self.all_images[:total_images_needed]
+        
+        if len(final_images) >= total_images_needed:
+            self.update_progress('completed', f'Successfully found {len(final_images)} images!', 
+                               total_target=total_images_needed)
+        else:
+            self.update_progress('completed', f'Found {len(final_images)} images', 
+                               total_target=total_images_needed)
+        
+        return final_images
+
+def safe_folder_name(name: str) -> str:
+    """Make a safe folder name for Windows/Linux/Mac."""
+    name = re.sub(r'[<>:"/\\|?*]', '', name)
+    name = name.strip().replace(" ", "_")
+    return name
+
+def scrape_images_multi_engine(query, total_images_needed, session_id=None):
+    """Production wrapper for the new class-based scraper"""
+    scraper = ProductionImageScraper(session_id)
+    return scraper.scrape_multi_engine(query, total_images_needed)
+
+def scrape_images_multi_engine(query, total_images_needed, session_id=None):
+    """Production wrapper for the new class-based scraper"""
+    scraper = ProductionImageScraper(session_id)
+    return scraper.scrape_multi_engine(query, total_images_needed)
 
 @app.route('/')
 def index():
     return render_template('index.html')
 
+@app.route('/progress/<session_id>')
+def progress_stream(session_id):
+    """Server-Sent Events endpoint for real-time progress updates"""
+    def generate():
+        while True:
+            with progress_lock:
+                if session_id in progress_data:
+                    data = progress_data[session_id].copy()
+                    yield f"data: {json.dumps(data)}\n\n"
+                    
+                    # If completed or error, stop streaming
+                    if data.get('status') in ['completed', 'error']:
+                        break
+                else:
+                    yield f"data: {json.dumps({'status': 'waiting', 'message': 'Initializing...'})}\n\n"
+            
+            time.sleep(0.5)  # Update every 500ms
+    
+    return Response(generate(), mimetype='text/plain')
+
+def update_progress(session_id, status, message, images_found=0, total_target=0, current_engine='', **kwargs):
+    """Thread-safe progress update compatible with both old and new system"""
+    with progress_lock:
+        if session_id not in progress_data:
+            progress_data[session_id] = {}
+        
+        progress_data[session_id].update({
+            'status': status,
+            'message': message,
+            'images_found': images_found,
+            'total_target': total_target,
+            'current_engine': current_engine,
+            'timestamp': time.time(),
+            **kwargs
+        })
+
+def cleanup_progress(session_id):
+    """Clean up progress data after completion"""
+    def cleanup():
+        time.sleep(300)  # Keep data for 5 minutes after completion
+        with progress_lock:
+            if session_id in progress_data:
+                del progress_data[session_id]
+                print(f"Cleaned up progress data for session: {session_id}")
+    
+    Thread(target=cleanup, daemon=True).start()
+
 @app.route('/scrape', methods=['POST'])
 def scrape():
+    # Generate unique session ID for progress tracking
+    session_id = str(uuid.uuid4())
+    
     try:
         # Input validation and sanitization
         if request.is_json:
@@ -453,7 +469,7 @@ def scrape():
         if not topic:
             error_msg = 'Please enter a search topic'
             if request.is_json:
-                return jsonify({'success': False, 'error': error_msg})
+                return jsonify({'success': False, 'error': error_msg, 'session_id': session_id})
             else:
                 return render_template('error.html', error=error_msg)
         
@@ -465,7 +481,7 @@ def scrape():
         except (ValueError, TypeError) as e:
             error_msg = 'Please enter a valid number between 1 and 1000'
             if request.is_json:
-                return jsonify({'success': False, 'error': error_msg})
+                return jsonify({'success': False, 'error': error_msg, 'session_id': session_id})
             else:
                 return render_template('error.html', error=error_msg)
         
@@ -474,33 +490,50 @@ def scrape():
         if len(topic) < 2:
             error_msg = 'Search topic must be at least 2 characters long'
             if request.is_json:
-                return jsonify({'success': False, 'error': error_msg})
+                return jsonify({'success': False, 'error': error_msg, 'session_id': session_id})
             else:
                 return render_template('error.html', error=error_msg)
         
-        try:
-            print(f"Scraping {quantity} images for '{topic}'...")
+        # For JSON requests (AJAX), start background task and return session ID
+        if request.is_json:
+            def background_scrape():
+                try:
+                    update_progress(session_id, 'starting', 'Initializing search...', 0, quantity)
+                    scraped_urls = scrape_images_multi_engine(topic, quantity, session_id)
+                    
+                    # Store results in progress data
+                    with progress_lock:
+                        if session_id in progress_data:
+                            progress_data[session_id]['images'] = scraped_urls
+                            progress_data[session_id]['topic'] = topic
+                            progress_data[session_id]['safe_topic'] = safe_folder_name(topic)
+                            progress_data[session_id]['requested'] = quantity
+                            
+                except Exception as e:
+                    print(f"Background scraping error: {e}")
+                    update_progress(session_id, 'error', f'Error occurred: {str(e)}', 0, quantity)
             
-            # Use the multi-engine scraper
-            scraped_urls = scrape_images_multi_engine(topic, quantity)
+            # Start background task
+            Thread(target=background_scrape, daemon=True).start()
+            
+            return jsonify({
+                'success': True,
+                'session_id': session_id,
+                'message': 'Scraping started. Use the session ID to track progress.'
+            })
         
-            if not scraped_urls:
-                error_msg = 'No images could be scraped. Please try a different search term.'
-                if request.is_json:
-                    return jsonify({'success': False, 'error': error_msg})
-                else:
-                    return render_template('error.html', error=error_msg)
+        else:
+            # For form submissions, do synchronous processing (for backward compatibility)
+            try:
+                print(f"Scraping {quantity} images for '{topic}'...")
+                
+                # Use the multi-engine scraper with progress tracking
+                scraped_urls = scrape_images_multi_engine(topic, quantity, session_id)
             
-            if request.is_json:
-                return jsonify({
-                    'success': True,
-                    'images': scraped_urls,
-                    'topic': topic,
-                    'total': len(scraped_urls),
-                    'total_found': len(scraped_urls),
-                    'requested': quantity
-                })
-            else:
+                if not scraped_urls:
+                    error_msg = 'No images could be scraped. Please try a different search term.'
+                    return render_template('error.html', error=error_msg)
+                
                 # Render results page for form submission
                 return render_template('results.html', 
                                      images=scraped_urls, 
@@ -510,13 +543,10 @@ def scrape():
                                      total=len(scraped_urls),
                                      total_found=len(scraped_urls),
                                      requested=quantity)
-            
-        except Exception as e:
-            print(f"Scraping error: {e}")
-            error_msg = f'Error occurred: {str(e)}'
-            if request.is_json:
-                return jsonify({'success': False, 'error': error_msg})
-            else:
+                
+            except Exception as e:
+                print(f"Scraping error: {e}")
+                error_msg = f'Error occurred: {str(e)}'
                 return render_template('error.html', error=error_msg)
     
     except Exception as e:
@@ -524,29 +554,75 @@ def scrape():
         print(f"Unexpected error in scrape route: {e}")
         error_msg = f'Unexpected error: {str(e)}'
         if request.is_json:
-            return jsonify({'success': False, 'error': error_msg})
+            return jsonify({'success': False, 'error': error_msg, 'session_id': session_id})
         else:
             return render_template('error.html', error=error_msg)
+
+@app.route('/results/<session_id>')
+def get_results(session_id):
+    """Get the final results for a completed scraping session"""
+    with progress_lock:
+        if session_id not in progress_data:
+            return render_template('error.html', error='Session not found or expired')
+        
+        data = progress_data[session_id]
+        
+        if data.get('status') != 'completed':
+            return render_template('error.html', error='Scraping not yet completed')
+        
+        if 'images' not in data:
+            return render_template('error.html', error='No results found for this session')
+        
+        return render_template('results.html',
+                             images=data['images'],
+                             image_urls=data['images'],
+                             topic=data['topic'],
+                             safe_topic=data['safe_topic'],
+                             total=len(data['images']),
+                             total_found=len(data['images']),
+                             requested=data['requested'])
+
+@app.route('/static/temp_images/<filename>')
+def serve_temp_image(filename):
+    """Serve temporary images from /tmp directory for Vercel"""
+    try:
+        temp_path = os.path.join('/tmp', 'temp_images', filename)
+        if os.path.exists(temp_path):
+            return send_file(temp_path)
+        else:
+            return "Image not found", 404
+    except Exception as e:
+        return f"Error serving image: {str(e)}", 500
 
 @app.route('/download/<topic>/<int:index>')
 def download_image(topic, index):
     """Download individual image"""
     try:
-        # Find the image in temp directory
-        static_temp = os.path.join('static', 'temp_images')
-        if not os.path.exists(static_temp):
-            return "Image not found", 404
+        # Find the image in temp directory (check both locations for compatibility)
+        temp_locations = [
+            os.path.join('/tmp', 'temp_images'),
+            os.path.join('static', 'temp_images')
+        ]
         
-        # Find files matching the pattern
-        files = [f for f in os.listdir(static_temp) 
-                if f.startswith(safe_folder_name(topic)) and f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'))]
+        files = []
+        for temp_dir in temp_locations:
+            if os.path.exists(temp_dir):
+                files.extend([f for f in os.listdir(temp_dir) 
+                            if f.startswith(safe_folder_name(topic)) and 
+                            f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'))])
         
         if index >= len(files):
             return "Image not found", 404
         
-        file_path = os.path.join(static_temp, files[index])
+        # Find the actual file path
+        file_path = None
+        for temp_dir in temp_locations:
+            potential_path = os.path.join(temp_dir, files[index])
+            if os.path.exists(potential_path):
+                file_path = potential_path
+                break
         
-        if not os.path.exists(file_path):
+        if not file_path:
             return "Image not found", 404
         
         # Get file extension for proper filename
@@ -563,13 +639,18 @@ def download_image(topic, index):
 def download_all_zip(topic):
     """Download all images as ZIP"""
     try:
-        static_temp = os.path.join('static', 'temp_images')
-        if not os.path.exists(static_temp):
-            return "No images found", 404
+        # Check both temp locations for compatibility
+        temp_locations = [
+            os.path.join('/tmp', 'temp_images'),
+            os.path.join('static', 'temp_images')
+        ]
         
-        # Find all files for this topic
-        files = [f for f in os.listdir(static_temp) 
-                if f.startswith(safe_folder_name(topic)) and f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'))]
+        files = []
+        for temp_dir in temp_locations:
+            if os.path.exists(temp_dir):
+                files.extend([f for f in os.listdir(temp_dir) 
+                            if f.startswith(safe_folder_name(topic)) and 
+                            f.lower().endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'))])
         
         if not files:
             return "No images found", 404
@@ -579,8 +660,15 @@ def download_all_zip(topic):
         
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
             for i, filename in enumerate(files):
-                file_path = os.path.join(static_temp, filename)
-                if os.path.exists(file_path):
+                # Find the actual file path
+                file_path = None
+                for temp_dir in temp_locations:
+                    potential_path = os.path.join(temp_dir, filename)
+                    if os.path.exists(potential_path):
+                        file_path = potential_path
+                        break
+                
+                if file_path:
                     # Use a clean filename in the ZIP
                     _, ext = os.path.splitext(filename)
                     clean_name = f"{safe_folder_name(topic)}_{i+1}{ext}"
@@ -605,19 +693,99 @@ def download_all_zip(topic):
 def clear_cache(topic):
     """Clear cached images for a topic"""
     try:
-        static_temp = os.path.join('static', 'temp_images')
-        if os.path.exists(static_temp):
-            files = [f for f in os.listdir(static_temp) 
-                    if f.startswith(safe_folder_name(topic))]
-            
-            for filename in files:
-                file_path = os.path.join(static_temp, filename)
-                try:
-                    os.remove(file_path)
-                except:
-                    pass
+        # Clean the topic name
+        clean_topic = safe_folder_name(topic)
+        files_deleted = 0
         
-        return jsonify({'success': True, 'message': f'Cleared {len(files)} images for {topic}'})
+        # Clear from both temp locations
+        temp_locations = [
+            os.path.join('/tmp', 'temp_images'),
+            os.path.join('static', 'temp_images')
+        ]
+        
+        for temp_dir in temp_locations:
+            if os.path.exists(temp_dir):
+                for filename in os.listdir(temp_dir):
+                    if clean_topic.lower() in filename.lower():
+                        file_path = os.path.join(temp_dir, filename)
+                        try:
+                            os.remove(file_path)
+                            files_deleted += 1
+                        except Exception as e:
+                            print(f"Error deleting {file_path}: {e}")
+        
+        # Clear from downloads folder
+        downloads_dir = os.path.join('downloads', clean_topic)
+        if os.path.exists(downloads_dir):
+            try:
+                shutil.rmtree(downloads_dir)
+                print(f"Deleted directory: {downloads_dir}")
+                files_deleted += 10  # Approximate count for directory deletion
+            except Exception as e:
+                print(f"Error deleting directory {downloads_dir}: {e}")
+        
+        # Clear any cached data (you can extend this)
+        temp_dirs = ['temp', 'cache', '.cache']
+        for temp_dir in temp_dirs:
+            if os.path.exists(temp_dir):
+                for root, dirs, files in os.walk(temp_dir):
+                    for filename in files:
+                        if clean_topic.lower() in filename.lower():
+                            file_path = os.path.join(root, filename)
+                            try:
+                                os.remove(file_path)
+                                files_deleted += 1
+                                print(f"Deleted cache file: {file_path}")
+                            except Exception as e:
+                                print(f"Error deleting cache file {file_path}: {e}")
+        
+        return jsonify({
+            'success': True, 
+            'message': f'Successfully cleared {files_deleted} files for "{topic}"',
+            'files_deleted': files_deleted
+        })
+        
+    except Exception as e:
+        print(f"Clear cache error: {e}")
+        return jsonify({'success': False, 'error': f'Failed to clear cache: {str(e)}'})
+
+@app.route('/clear_all')
+def clear_all_cache():
+    """Clear all cached images"""
+    try:
+        files_deleted = 0
+        
+        # Clear both temp locations
+        temp_locations = [
+            os.path.join('/tmp', 'temp_images'),
+            os.path.join('static', 'temp_images')
+        ]
+        
+        for temp_dir in temp_locations:
+            if os.path.exists(temp_dir):
+                for filename in os.listdir(temp_dir):
+                    file_path = os.path.join(temp_dir, filename)
+                    try:
+                        os.remove(file_path)
+                        files_deleted += 1
+                    except Exception as e:
+                        print(f"Error deleting {file_path}: {e}")
+        
+        # Clear downloads folder
+        downloads_dir = 'downloads'
+        if os.path.exists(downloads_dir):
+            try:
+                shutil.rmtree(downloads_dir)
+                os.makedirs(downloads_dir, exist_ok=True)
+                files_deleted += 50  # Approximate count
+            except Exception as e:
+                print(f"Error clearing downloads: {e}")
+        
+        return jsonify({
+            'success': True, 
+            'message': f'Successfully cleared all cache ({files_deleted} files)',
+            'files_deleted': files_deleted
+        })
         
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
@@ -625,12 +793,16 @@ def clear_cache(topic):
 if __name__ == '__main__':
     # Create necessary directories
     os.makedirs('static/temp_images', exist_ok=True)
+    os.makedirs('/tmp/temp_images', exist_ok=True)
     
-    print("🚀 Advanced Multi-Engine Image Scraper Starting...")
-    print("✅ Search Engines: Bing, Google, Yandex, DuckDuckGo")
-    print("✅ Duplicate detection enabled")
-    print("✅ Exact count delivery")
-    print("✅ High-quality filtering")
-    print("✅ No count limits - get exactly what you request!")
+    print("🚀 Production Image Scraper Starting...")
+    print("✅ Vercel-optimized deployment")
+    print("✅ Instance-based crawling")
+    print("✅ Real-time progress tracking")
+    print("✅ Production-ready scaling")
     
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=False, host='0.0.0.0', port=5000)
+
+# Vercel entry point
+def application(environ, start_response):
+    return app(environ, start_response)

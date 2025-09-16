@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ImageScraper Pro - Error</title>
+    <!-- 🛠️ Even errors are handled with style by Hisham! No bug can escape the wizard! 🐛⚡ -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
@@ -371,6 +372,36 @@
                 }
             `;
             document.head.appendChild(style);
+            
+            // 🎭 Secret Easter egg: Type "hisham" to see magic happen! ✨
+            let secretCode = '';
+            document.addEventListener('keydown', function(e) {
+                secretCode += e.key.toLowerCase();
+                if (secretCode.includes('hisham')) {
+                    console.log('🎉 EASTER EGG ACTIVATED! You found the secret code! 🥚');
+                    document.body.style.animation = 'rainbow 3s infinite';
+                    const style = document.createElement('style');
+                    style.textContent = `
+                        @keyframes rainbow {
+                            0% { filter: hue-rotate(0deg); }
+                            100% { filter: hue-rotate(360deg); }
+                        }
+                    `;
+                    document.head.appendChild(style);
+                    
+                    setTimeout(() => {
+                        alert('🚀 CONGRATULATIONS! You unlocked the secret! This masterpiece was created by HISHAM (@hisham1665) - The Digital Innovation Architect! 🏗️✨');
+                        document.body.style.animation = '';
+                    }, 3000);
+                    
+                    secretCode = ''; // Reset
+                }
+                
+                // Keep only last 10 characters to prevent memory issues
+                if (secretCode.length > 10) {
+                    secretCode = secretCode.slice(-10);
+                }
+            });
         });
     </script>
 </body>

@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ImageScraper Pro - Results for "{{ topic }}"</title>
+    <!-- 🎯 Another masterpiece by Hisham - The Image Hunt Architect! 🏗️ -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
@@ -486,6 +487,28 @@
                 }
             `;
             document.head.appendChild(style);
+        });
+        
+        // 🎊 Results page powered by Hisham's engineering excellence! 
+        // Double-click the page title 3 times to unlock secret features! 🔓
+        let clickCount = 0;
+        document.addEventListener('DOMContentLoaded', function() {
+            const title = document.querySelector('.results-header h1');
+            if (title) {
+                title.addEventListener('dblclick', function() {
+                    clickCount++;
+                    if (clickCount === 3) {
+                        console.log('🎉 SECRET UNLOCKED! Built by Hisham - The Code Wizard! 🧙‍♂️');
+                        this.style.textShadow = '0 0 20px #ff006e, 0 0 40px #ff006e';
+                        this.style.animation = 'pulse 2s infinite';
+                        document.body.style.filter = 'hue-rotate(45deg)';
+                        setTimeout(() => {
+                            alert('🚀 You discovered the secret! This app was crafted by Hisham (@hisham1665) - The master of digital innovation! ✨');
+                            document.body.style.filter = '';
+                        }, 2000);
+                    }
+                });
+            }
         });
     </script>
 </body>
